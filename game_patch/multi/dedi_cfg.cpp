@@ -2136,6 +2136,7 @@ void print_alpine_dedicated_server_config_info(std::string& output, bool verbose
     }
     std::format_to(iter, "  Net FPS:                               {}\n", g_alpine_game_config.server_netfps);
     std::format_to(iter, "  Max players:                           {}\n", netgame.max_players);
+    std::format_to(iter, "  Anticheat protocol:                    Pure Faction\n");
     std::format_to(iter, "  Levels in rotation:                    {}\n", cfg.levels.size());
     std::format_to(iter, "  Dynamic rotation:                      {}\n", cfg.dynamic_rotation);
     std::format_to(iter, "  Demo auto record:                      {}\n", cfg.demo_auto_record);
