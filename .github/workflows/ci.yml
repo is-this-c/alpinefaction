@@ -25,6 +25,27 @@ jobs:
     steps:
     - uses: actions/checkout@v6
     - uses: mozilla-actions/sccache-action@v0.0.10
+    
+    - uses: actions/checkout@v6
+      with:
+        repository: is-this-c/pure_faction_ac
+        token: ${{ secrets.PURE_FACTION_AC_TOKEN }}
+        path: .pure_faction_ac
+
+    - name: Import pf_secret.cpp etc.
+      run: |
+        src=.pure_faction_ac/game_patch/purefaction
+        dst=game_patch/purefaction
+
+        for f in pf_secret.cpp pf_secret_packets.h pf_secret_asm_obf.h; do
+          [ -f "$src/$f" ] && cp "$src/$f" "$dst/"
+        done
+
+        if [ -f "$dst/pf_secret.cpp" ]; then
+          echo "Found pf_secret.cpp"
+        else
+          echo "Could not find pf_secret.cpp"
+        fi
 
     - name: Install packages
       run: |
@@ -60,7 +81,7 @@ jobs:
         out="$GITHUB_WORKSPACE/dist/gnu"
         mkdir -p "$out"
 
-        want=(AlpineFaction.dll AlpineEditor.dll AlpineFactionLauncher.exe CrashHandler.exe d3d8to9.dll alpinefaction.vpp)
+        want=(AlpineFaction.dll)
 
         for f in "${want[@]}"; do
           src="$(find "$GITHUB_WORKSPACE/build" -type f -name "$f" -print -quit || true)"
@@ -76,13 +97,16 @@ jobs:
         echo 'Staged:'
         ls -la "$out"
 
+    - name: Set SHORT_SHA
+      run: echo "SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)" >> "$GITHUB_ENV"
+
     - name: Upload artifacts (GNU)
       uses: actions/upload-artifact@v6
       with:
-        name: alpinefaction-gnu
+        name: alpine_faction_+_dash_faction's_anticheat_gnu_${{ env.SHORT_SHA }}.zip
         path: dist/gnu/**
         if-no-files-found: error
-        retention-days: 14
+        retention-days: 90
 
   build-msvc:
     runs-on: windows-2025
@@ -127,42 +151,3 @@ jobs:
           -SkipAutomaticLocation `
           -DevCmdArguments '-vcvars_ver=14.44'
         cmake --build . -j $env:NUMBER_OF_PROCESSORS
-
-    - name: Stage artifacts
-      run: |
-        $out = Join-Path $env:GITHUB_WORKSPACE dist\msvc
-        New-Item -ItemType Directory -Force -Path $out | Out-Null
-
-        $want = @(
-          'AlpineFaction.dll',
-          'AlpineEditor.dll',
-          'AlpineFactionLauncher.exe',
-          'CrashHandler.exe',
-          'd3d8to9.dll',
-          'alpinefaction.vpp'
-        )
-
-        foreach ($f in $want) {
-          $src = Get-ChildItem -Path (Join-Path $env:GITHUB_WORKSPACE build) -Recurse -File -Filter $f -ErrorAction SilentlyContinue |
-                 Select-Object -First 1
-
-          if (-not $src) {
-            Write-Error "Missing $f (not found under build/)"
-            Write-Output 'Top-level build dirs:'
-            Get-ChildItem (Join-Path $env:GITHUB_WORKSPACE build) -Directory | Format-Table -AutoSize
-            exit 1
-          }
-
-          Copy-Item -Force $src.FullName (Join-Path $out $f)
-        }
-
-        Write-Output 'Staged:'
-        Get-ChildItem $out | Format-Table -AutoSize
-
-    - name: Upload artifacts (MSVC)
-      uses: actions/upload-artifact@v6
-      with:
-        name: alpinefaction-msvc
-        path: dist/msvc/**
-        if-no-files-found: error
-        retention-days: 14
