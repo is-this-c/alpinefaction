@@ -268,7 +268,14 @@ enum packet_type : uint8_t {
     sound                  = 0x34,
     team_score             = 0x35,
     glass_kill             = 0x36,
+    pf_players_request     = 0x3A,
+    pf_server_hash         = 0x3B,
+    pf_client_hash         = 0x3C,
+    pf_request_cheat_check = 0x3D,
+    pf_client_cheat_check  = 0x3E,
     pf_player_stats        = 0x2A,
+    pf_announce_player     = 0x40,
+    pf_players             = 0xA1,
     af_ping_location_req   = 0x50,
     af_ping_location       = 0x51,
     af_damage_notify       = 0x52,
@@ -313,9 +320,11 @@ std::array g_server_side_packet_whitelist{
     fall_damage,
     rcon_request,
     rcon,
+    pf_client_hash,
+    pf_client_cheat_check,
     af_ping_location_req,
     af_client_req,
-    af_spectate_start
+    af_spectate_start,
 };
 
 // server -> client
@@ -361,7 +370,11 @@ std::array g_client_side_packet_whitelist{
     sound,
     team_score,
     glass_kill,
+    pf_server_hash,
+    pf_request_cheat_check,
     pf_player_stats,
+    // Not implemented.
+    // pf_announce_player,
     af_ping_location,
     af_damage_notify,
     af_obj_update,
