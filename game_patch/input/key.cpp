@@ -427,7 +427,7 @@ CodeInjection controls_process_patch{
 
 CodeInjection controls_process_chat_menu_patch{
     0x00430E19,
-    [](auto& regs) {
+    [] {
         const bool chat_menu_numeric_capture_active =
             get_chat_menu_is_active()
             && !rf::console::console_is_visible()

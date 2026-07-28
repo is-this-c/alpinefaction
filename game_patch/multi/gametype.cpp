@@ -1894,7 +1894,7 @@ void multi_level_init_post_gametypes()
 // pre level being loaded
 CodeInjection multi_level_init_gametypes_injection{
     0x0046E466,
-    [](auto& regs) {
+    [] {
         hill_mode_level_init();
     },
 };

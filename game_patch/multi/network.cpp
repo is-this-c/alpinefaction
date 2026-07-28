@@ -318,33 +318,6 @@ std::array g_client_side_packet_whitelist{
 
 std::optional<AlpineFactionServerInfo> g_af_server_info;
 
-bool packet_check_whitelist(int packet_type) {
-    bool allowed = false;
-    if (rf::is_server) {
-        auto& whitelist = g_server_side_packet_whitelist;
-        allowed = std::find(whitelist.begin(), whitelist.end(), packet_type) != whitelist.end();
-    }
-    else {
-        auto& whitelist = g_client_side_packet_whitelist;
-        allowed = std::find(whitelist.begin(), whitelist.end(), packet_type) != whitelist.end();
-    }
-    return allowed;
-}
-
-CodeInjection process_game_packet_whitelist_filter{
-    0x0047918D,
-    [](auto& regs) {
-        int packet_type = regs.esi;
-        if (!packet_check_whitelist(packet_type)) {
-            xlog::warn("Ignoring packet 0x{:x}", packet_type);
-            regs.eip = 0x00479194;
-        }
-        else {
-            xlog::trace("Processing packet 0x{:x}", packet_type);
-        }
-    },
-};
-
 static inline uint64_t addr_key(const rf::NetAddr& a)
 {
     return (uint64_t(a.ip_addr) << 16) | (uint64_t(a.port) & 0xFFFF);
@@ -2519,7 +2492,7 @@ void __fastcall multi_io_stats_add_new(void *this_, int edx, int size, bool is_s
 
 FunHook<void __fastcall(void*, int, int, bool, int)> multi_io_stats_add_hook{0x0047CAC0, multi_io_stats_add_new};
 
-static void process_custom_packet([[maybe_unused]] void* data, [[maybe_unused]] int len,
+static void process_custom_packet([[maybe_unused]] const void* data, [[maybe_unused]] int len,
                                   [[maybe_unused]] const rf::NetAddr& addr, [[maybe_unused]] rf::Player* player)
 {
     pf_process_packet(data, len, addr, player);
@@ -2568,48 +2541,84 @@ static bool parse_af_gi_req_tail(const uint8_t* pkt, size_t datalen, uint8_t& ou
     return true;
 }
 
+bool packet_check_whitelist(const int packet_type) {
+    bool allowed = false;
+    if (rf::is_server) {
+        const auto& whitelist = g_server_side_packet_whitelist;
+        allowed = std::ranges::find(whitelist, packet_type) != whitelist.end();
+    } else {
+        const auto& whitelist = g_client_side_packet_whitelist;
+        allowed = std::ranges::find(whitelist, packet_type) != whitelist.end();
+    }
+    return allowed;
+}
+
 CodeInjection multi_io_process_packets_injection{
     0x0047918D,
-    [](auto& regs) {
-        int packet_type = regs.esi;
-        if (packet_type > 0x37 || packet_type == static_cast<int>(pf_packet_type::player_stats)) {
-            auto stack_frame = regs.esp + 0x1C;
-            std::byte* data = regs.ecx;
-            int offset = regs.ebp;
-            int len = regs.edi;
-            auto& addr = *addr_as_ref<rf::NetAddr*>(stack_frame + 0xC);
-            auto player = addr_as_ref<rf::Player*>(stack_frame + 0x10);
-            process_custom_packet(data + offset, len, addr, player);
+    [] (auto& regs) {
+        const int packet_type = regs.esi;
+
+        if (!packet_check_whitelist(packet_type)) {
+            xlog::warn("Ignoring packet 0x{:x}", packet_type);
+        SKIP_DEFAULT_HANDLER:
             regs.eip = 0x00479194;
+            return;
         }
-        if (rf::is_dedicated_server || (rf::is_server && !rf::is_dedicated_server)) {
-            // stash the join req packet so we can analyze it if the player successfully joins
-            if (packet_type == static_cast<int>(RF_GamePacketType::RF_GPT_JOIN_REQUEST)) {
-                const uint8_t* base = static_cast<const uint8_t*>(regs.ecx);
-                auto stack_frame = regs.esp + 0x1C;
-                auto& addr = *addr_as_ref<rf::NetAddr*>(stack_frame + 0xC);
+
+        xlog::trace("Processing packet 0x{:x}", packet_type);
+
+        if (packet_type > 0x37
+            || packet_type == static_cast<int>(pf_packet_type::player_stats))
+        {
+            const std::byte* const data = regs.ecx;
+            const int offset = regs.ebp;
+            const int len = regs.edi;
+            const int stack_frame = regs.esp + 0x1C;
+            const rf::NetAddr& addr =
+                *addr_as_ref<const rf::NetAddr*>(stack_frame + 0xC);
+            rf::Player* const player = addr_as_ref<rf::Player*>(stack_frame + 0x10);
+            process_custom_packet(data + offset, len, addr, player);
+            goto SKIP_DEFAULT_HANDLER;
+        }
+
+        if (rf::is_server) {
+            if (packet_type == static_cast<int>(packet_type::join_request)) {
+                // Stash their packet for later analysis, if they join successfully.
+                const uint8_t* const base = regs.ecx;
                 const int off = regs.ebp;
                 const int len = regs.edi;
+                const int stack_frame = regs.esp + 0x1C;
+                const rf::NetAddr& addr =
+                    *addr_as_ref<const rf::NetAddr*>(stack_frame + 0xC);
 
-                // UDP datagram
+                // Bytes remaining in their datagram.
                 size_t rx_len = 0;
-                if (g_rx_base && g_rx_len && base + off >= g_rx_base && base + off <= g_rx_base + g_rx_len) {
+                if (g_rx_base
+                    && g_rx_len
+                    && base + off >= g_rx_base
+                    && base + off <= g_rx_base + g_rx_len)
+                {
                     rx_len = (g_rx_base + g_rx_len) - (base + off);
                 }
 
-                // join req stash for later analysis
-                g_join_request_stashed = {addr, base + off, size_t(len), rx_len, uint8_t(packet_type)};
-            }
-            // analyze the game_info_req packet so we can adjust the response if needed
-            if (packet_type == static_cast<int>(RF_GamePacketType::RF_GPT_GAME_INFO_REQUEST)) {
-                const uint8_t* base = static_cast<const uint8_t*>(regs.ecx);
-                auto stack_frame = regs.esp + 0x1C;
-                const auto& addr = *addr_as_ref<rf::NetAddr*>(stack_frame + 0xC);
+                g_join_request_stashed = StashedPacket{
+                    addr,
+                    base + off,
+                    static_cast<size_t>(len),
+                    rx_len,
+                    static_cast<uint8_t>(packet_type),
+                };
+            } else if (packet_type == static_cast<int>(packet_type::game_info_request)) {
+                // Analyze their packet, so we can adjust our response, if needed.
+                const uint8_t* const base = regs.ecx;
                 const int off = regs.ebp;
-                const int len = regs.edi;
+                const size_t len = regs.edi;
+                const int stack_frame = regs.esp + 0x1C;
+                const rf::NetAddr& addr =
+                    *addr_as_ref<const rf::NetAddr*>(stack_frame + 0xC);
 
                 uint8_t ver = 0;
-                if (parse_af_gi_req_tail(base + off, size_t(len), ver)) {
+                if (parse_af_gi_req_tail(base + off, len, ver)) {
                     const int64_t now = timer::get_i64(1000);
                     g_af_gi_req_seen[addr_key(addr)] = AfGiReqSeen{ver, now};
                     xlog::debug("AF GI-REQ detected from {:x}:{} (ver={})", addr.ip_addr, addr.port, ver);
@@ -2803,9 +2812,6 @@ void network_init()
         patch.install();
     }
 
-    //  Filter packets based on the side (client-side vs server-side)
-    process_game_packet_whitelist_filter.install();
-
     // Hook packet handlers
     process_join_deny_packet_hook.install();
     process_new_player_packet_hook.install();
@@ -2932,7 +2938,7 @@ void network_init()
     // IP address that the reliable socket uses. This change ensures that the port is also compared.
     write_mem<i8>(0x0046E8DA + 1, 1);
 
-    // Support custom packet types
+    // Support custom packet types and packet filtering.
     AsmWriter{0x0047916D}.nop(2);
     multi_io_process_packets_injection.install();
     multi_io_stats_add_hook.install();
