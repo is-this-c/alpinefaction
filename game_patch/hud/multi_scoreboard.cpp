@@ -82,6 +82,20 @@ static ScoreboardCategory get_scoreboard_category(const rf::Player* player)
     return ScoreboardCategory::Active;
 }
 
+static std::optional<rf::Color> get_player_pf_status_color(
+    const rf::Player* const player
+) {
+    switch (player->received_pf_status.value_or(pf_pure_status::none)) {
+        case pf_pure_status::gold:
+            return rf::Color{0xFF, 0xD7, 0x00, 0xFF};
+        case pf_pure_status::blue:
+        case pf_pure_status::fail:
+            return rf::Color{0x4D, 0xB6, 0xFF, 0xFF};
+        default:
+            return std::nullopt;
+    }
+}
+
 static std::vector<size_t> calculate_divider_indices(const std::vector<rf::Player*>& players)
 {
     std::vector<size_t> divider_indices{};
@@ -384,6 +398,9 @@ int draw_scoreboard_players(
             const auto [space_w, space_h] = rf::gr::get_char_size(' ', -1);
             const bool is_bot = player->is_bot;
             const int bot_font = hud_get_small_font();
+            const std::optional<rf::Color> pf_status_color =
+                get_player_pf_status_color(player);
+
             if (is_bot) {
                 const auto [bot_w, bot_h] = rf::gr::get_string_size(" BOT", bot_font);
                 gr_fit_string(
@@ -391,24 +408,55 @@ int draw_scoreboard_players(
                     name_w - bot_w - space_w
                 );
             } else {
+                const auto [pf_status_w, pf_status_h] =
+                    rf::gr::get_string_size(" p", bot_font);
                 gr_fit_string(
                     player_name_stripped,
-                    name_w - space_w
+                    pf_status_color
+                        ? name_w - (pf_status_w - 3) - space_w
+                        : name_w - space_w
                 );
             }
 
+            rf::gr::string(name_x, y, player_name_stripped.c_str());
+
             if (is_bot) {
-                rf::gr::string(name_x, y, player_name_stripped.c_str());
                 rf::gr::set_color(255, 250, 205, 255);
-                int bot_y = y + (rf::gr::get_font_height(-1) - rf::gr::get_font_height(bot_font)) / 2;
+                const int bot_y = y + (rf::gr::get_font_height(-1) - rf::gr::get_font_height(bot_font)) / 2;
                 rf::gr::string(rf::gr::current_string_x, bot_y, " BOT", bot_font);
-                if (is_local_player) {
-                    rf::gr::set_color(0xFF, 0xFF, 0x80, 0xFF);
-                } else {
-                    rf::gr::set_color(0xFF, 0xFF, 0xFF, 0xFF);
+            } else if (pf_status_color) {
+                rf::gr::set_color(*pf_status_color);
+                const int pf_status_y = y
+                    + (rf::gr::get_font_height(-1) - rf::gr::get_font_height(bot_font))
+                    / 2;
+                rf::gr::string(rf::gr::current_string_x, pf_status_y, " ", bot_font);
+                const int pf_status_x = rf::gr::current_string_x - 3;
+                rf::gr::string(pf_status_x, pf_status_y - 3, "p", bot_font);
+                const bool is_failed =
+                    player->received_pf_status == std::optional{pf_pure_status::fail};
+                if (is_failed) {
+                    const auto [pf_status_w, pf_status_h] =
+                        rf::gr::get_char_size('p', bot_font);
+                    rf::gr::set_color(0xE0, 0x30, 0x30, 0xFF);
+                    rf::gr::line(
+                        static_cast<float>(pf_status_x),
+                        static_cast<float>(pf_status_y + 2),
+                        static_cast<float>(pf_status_x + pf_status_w - 2),
+                        static_cast<float>(pf_status_y + pf_status_h - 4)
+                    );
+                    rf::gr::line(
+                        static_cast<float>(pf_status_x + 1),
+                        static_cast<float>(pf_status_y + 2),
+                        static_cast<float>(pf_status_x + pf_status_w - 1),
+                        static_cast<float>(pf_status_y + pf_status_h - 4)
+                    );
                 }
+            }
+
+            if (is_local_player) {
+                rf::gr::set_color(0xFF, 0xFF, 0x80, 0xFF);
             } else {
-                rf::gr::string(name_x, y, player_name_stripped.c_str());
+                rf::gr::set_color(0xFF, 0xFF, 0xFF, 0xFF);
             }
 
 #if DEBUG_SCOREBOARD
