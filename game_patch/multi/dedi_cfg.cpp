@@ -53,6 +53,7 @@
 #include "../rf/os/timer.h"
 #include "../rf/level.h"
 #include "../rf/collide.h"
+#include "../purefaction/pf.h"
 #include "bots/bot_personality.h"
 #include <common/utils/os-utils.h>
 

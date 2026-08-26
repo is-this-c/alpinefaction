@@ -3189,6 +3189,7 @@ CodeInjection send_state_info_injection{
     [](auto& regs) {
         rf::Player* player = regs.edi;
         trigger_send_state_info(player);
+        pf_player_level_load(player);
         sprays_force_state_sync_to(player);
     },
 };
@@ -3202,6 +3203,7 @@ FunHook<void(rf::Player*)> send_players_packet_hook{
             DemoRosterHideGuard roster_guard{player};
             send_players_packet_hook.call_target(player);
         }
+        pf_player_init(player);
         if (rf::is_server) {
             server_reliable_socket_ready(player);
         }
@@ -3246,7 +3248,7 @@ FunHook<void __fastcall(void*, int, int, bool, int)> multi_io_stats_add_hook{0x0
 static void process_custom_packet([[maybe_unused]] const void* data, [[maybe_unused]] int len,
                                   [[maybe_unused]] const rf::NetAddr& addr, [[maybe_unused]] rf::Player* player)
 {
-    pf_process_packet(data, len, addr);
+    pf_process_packet(data, len, addr, player);
     af_process_packet(data, len, addr, player);
 }
 
