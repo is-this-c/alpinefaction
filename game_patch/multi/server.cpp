@@ -65,6 +65,7 @@
 #include "../purefaction/pf.h"
 #include "../fflink/afstats_events.h"
 #include "../fflink/fflink_session.h"
+#include "../purefaction/pf_ac.h"
 
 // all commands that can be used by any rcon profiles
 // full_admin gives access to this entire list
@@ -371,6 +372,15 @@ std::string build_player_info_line(rf::Player* player, bool new_join) {
     // clients have only limited info
     if (!rf::is_server) {
         return std::format("- {} | Ping: {}", name, player->net_data->ping);
+    }
+
+    const pf_pure_status status = pf_ac_get_pure_status(player);
+    if (status == pf_pure_status::blue) {
+        name += " [#blue] p";
+    } else if (status == pf_pure_status::gold) {
+        name += " [#gold] p";
+    } else if (status == pf_pure_status::fail) {
+        name += " [#strike] p";
     }
 
     std::string client_info{};
