@@ -1,4 +1,4 @@
-Alpine Faction
+Alpine Faction + Dash Faction's Closed-Source Pure Faction–Compatible Anticheat
 ============
 <img src="https://raw.githubusercontent.com/GooberRF/alpinefaction/refs/heads/master/docs/alpinelogo1.png">
 
